@@ -4,7 +4,7 @@ import type React from "react";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   Building2,
@@ -57,11 +57,6 @@ const navItems: NavItem[] = [
     href: "/bookings",
     icon: Building2,
   },
-  {
-    title: "Analytics",
-    href: "/analytics",
-    icon: BarChart3,
-  },
 ];
 
 export default function DashboardLayout({
@@ -73,6 +68,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { setTheme, theme } = useTheme();
   const { toast } = useToast();
+  const router = useRouter();
 
   useEffect(() => {
     setIsMounted(true);
@@ -83,6 +79,8 @@ export default function DashboardLayout({
       title: "Logged out",
       description: "You have been logged out successfully",
     });
+    router.push("/login");
+    // Add your logout logic here
   };
 
   return (
