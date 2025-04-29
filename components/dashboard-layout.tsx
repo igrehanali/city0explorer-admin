@@ -11,6 +11,7 @@ import {
   Globe,
   LayoutDashboard,
   LogOut,
+  MailQuestion,
   Menu,
   Moon,
   // Settings,
@@ -57,6 +58,11 @@ const navItems: NavItem[] = [
     href: "/bookings",
     icon: Building2,
   },
+  {
+    title: "Help Center",
+    href: "/help",
+    icon: MailQuestion,
+  }
 ];
 
 export default function DashboardLayout({
