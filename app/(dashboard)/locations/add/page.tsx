@@ -121,6 +121,9 @@ export default function AddLocationPage() {
                     <SelectItem value="city">City</SelectItem>
                     <SelectItem value="island">Island</SelectItem>
                     <SelectItem value="mountain">Mountain</SelectItem>
+                    <SelectItem value="Places">Places</SelectItem>
+                    <SelectItem value="Hotels">Hotels</SelectItem>
+                    <SelectItem value="restaurant ">restaurant </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
