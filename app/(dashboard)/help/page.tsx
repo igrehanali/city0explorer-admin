@@ -1,130 +1,192 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase"; // adjust if your firebase config is elsewhere
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { useEffect, useState } from "react";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  doc,
+  setDoc,
+  addDoc,
+  serverTimestamp,
+  getDocs,
+} from "firebase/firestore";
+import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { toast } from "react-hot-toast";
 
-interface HelpRequest {
+interface ChatUser {
   id: string;
-  createdAt: any;
-  description: string;
-  question: string;
-  status: string;
+  email: string;
   userEmail: string;
-  userId: string;
-  reply?: string;
 }
 
-const HelpPage = () => {
-  const { toast } = useToast();
-  const [helpRequests, setHelpRequests] = useState<HelpRequest[]>([]);
-  const [replies, setReplies] = useState<{ [key: string]: string }>({});
+interface Message {
+  id: string;
+  sender: "admin" | "user";
+  text: string;
+  createdAt: any;
+}
+
+export default function AdminChatPage() {
+  const [users, setUsers] = useState<ChatUser[]>([]);
+  const [selectedUser, setSelectedUser] = useState<ChatUser | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState("");
 
   useEffect(() => {
-    const fetchHelpRequests = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, "helpRequests"));
-        const requests: HelpRequest[] = querySnapshot.docs.map(
-          (docSnapshot) => ({
-            id: docSnapshot.id,
-            ...docSnapshot.data(),
-          })
-        ) as HelpRequest[];
-        setHelpRequests(requests);
-      } catch (error) {
-        console.error("Error fetching help requests:", error);
-      }
-    };
+    const unsubscribe = onSnapshot(collection(db, "chats"), (snapshot) => {
+      const usersData: ChatUser[] = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          email: data.email ?? "",
+          userEmail: data.userEmail ?? "",
+        };
+      });
+      setUsers(usersData);
+    });
 
-    fetchHelpRequests();
+    return () => unsubscribe();
   }, []);
+  // Fetch real-time messages for selected user
+  useEffect(() => {
+    if (!selectedUser) return;
 
-  const handleReply = async (id: string) => {
-    const replyText = replies[id];
-    if (!replyText) {
-      toast({
-        title: "Reply Required",
-        description: "Please enter a reply before sending.",
-        variant: "destructive",
-      });
-      return;
-    }
+    const messagesRef = collection(db, "chats", selectedUser.id, "messages");
+    const q = query(messagesRef, orderBy("createdAt", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs: Message[] = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as Omit<Message, "id">),
+      }));
+      setMessages(msgs);
+    });
+
+    return () => unsubscribe();
+  }, [selectedUser]);
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !selectedUser) return;
+
+    const messagesRef = collection(db, "chats", selectedUser.id, "messages");
     try {
-      await updateDoc(doc(db, "helpRequests", id), {
-        reply: replyText,
-        status: "replied",
-      });
-      toast({
-        title: "Reply Sent",
-        description: "Your response has been successfully sent to the user.",
+      await addDoc(messagesRef, {
+        text: newMessage.trim(),
+        createdAt: serverTimestamp(),
+        fromAdmin: true,
+        senderEmail: "",
+        senderId: "",
       });
 
-      setReplies((prev) => ({ ...prev, [id]: "" }));
+      await setDoc(
+        doc(db, "chats", selectedUser.id),
+        {
+          email: selectedUser.email,
+          lastUpdated: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setNewMessage("");
     } catch (error) {
-      console.error("Error replying:", error);
-      toast({
-        title: "Reply Failed",
-        description: "An error occurred while sending the reply.",
-        variant: "destructive",
-      });
+      toast.error("Failed to send message");
+      console.error(error);
     }
   };
-
+  console.log("users", users);
   return (
-    <div className="p-6 grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-      {helpRequests.map((request) => (
-        <Card key={request.id} className="flex flex-col justify-between">
+    <div className="flex h-[calc(100vh-5rem)] mt-20">
+      {/* Sidebar - Users */}
+      <aside className="w-64 border-r bg-white">
+        <Card className="h-full rounded-none">
           <CardHeader>
-            <div className="text-sm text-muted-foreground">
-              {new Date(request.createdAt.seconds * 1000).toLocaleString()}
-            </div>
-            <h2 className="text-lg font-semibold">{request.question}</h2>
+            <CardTitle className="text-xl">Users</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm">{request.description}</p>
-            <div className="text-sm font-medium">
-              Status: <span className="capitalize">{request.status}</span>
-            </div>
-            {request.status === "pending" || request.status === "replied" ? (
-              <>
-                <Textarea
-                  placeholder="Write a reply..."
-                  value={replies[request.id] || ""}
-                  onChange={(e) =>
-                    setReplies((prev) => ({
-                      ...prev,
-                      [request.id]: e.target.value,
-                    }))
-                  }
-                />
-                <Button onClick={() => handleReply(request.id)}>
-                  Send Reply
-                </Button>
-              </>
-            ) : null}
-            {request.status !== "resolved" && (
-              <Button
-                variant="outline"
-                onClick={() => handleResolve(request.id)}
-              >
-                Mark as Resolved
-              </Button>
-            )}
-            {request.reply && (
-              <div className="bg-muted p-3 rounded-md text-sm">
-                <strong>Admin Reply:</strong> {request.reply}
-              </div>
-            )}
-          </CardContent>
+          <ScrollArea className="h-[80%]">
+            <CardContent className="space-y-2">
+              {users.map((user) => (
+                <div
+                  key={user.id}
+                  onClick={() => setSelectedUser(user)}
+                  className={`p-2 rounded cursor-pointer ${
+                    selectedUser?.id === user.id
+                      ? "bg-purple-100 text-purple-800"
+                      : "hover:bg-gray-100"
+                  }`}
+                >
+                  {user.userEmail}
+                </div>
+              ))}
+            </CardContent>
+          </ScrollArea>
         </Card>
-      ))}
+      </aside>
+
+      {/* Chat Window */}
+      <main className="flex-1 flex flex-col">
+        {selectedUser ? (
+          <>
+            <Card className="rounded-none border-l-0 border-r-0">
+              <CardHeader>
+                <CardTitle>Chat with {selectedUser.email}</CardTitle>
+              </CardHeader>
+            </Card>
+
+            <ScrollArea className="flex-1 px-6 py-4 overflow-y-auto">
+              <div className="space-y-4">
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${
+                      msg.sender === "admin" ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <div
+                      className={`rounded-lg px-4 py-2 text-sm max-w-xs ${
+                        msg.sender === "admin"
+                          ? "bg-purple-600 text-white"
+                          : "bg-gray-200 text-gray-900"
+                      }`}
+                    >
+                      {msg.text}
+                      <div className="text-[10px] text-right mt-1 opacity-60">
+                        {msg.createdAt?.toDate
+                          ? new Date(
+                              msg.createdAt.toDate()
+                            ).toLocaleTimeString()
+                          : ""}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+
+            <Separator />
+            <div className="flex items-center gap-2 p-4 border-t">
+              <Input
+                placeholder="Type a message..."
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                className="flex-1"
+              />
+              <Button onClick={sendMessage} disabled={!newMessage.trim()}>
+                Send
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-gray-400">
+            Select a user to start chatting.
+          </div>
+        )}
+      </main>
     </div>
   );
-};
-
-export default HelpPage;
+}
